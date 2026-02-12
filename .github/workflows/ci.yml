@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
   backend:
@@ -16,6 +17,7 @@ jobs:
     
     permissions:
       contents: read
+      checks: write
     
     defaults:
       run:
@@ -32,22 +34,66 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
       
-      - name: Build with Maven
-        run: mvn clean install -B
+      - name: Build and run tests with coverage
+        run: mvn clean verify -B
       
-      - name: Run tests
-        run: mvn test -B
+      - name: Upload JaCoCo coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jacoco-reports
+          path: back/target/site/jacoco/
+          retention-days: 30
       
-      - name: Generate test report
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: back/target/surefire-reports/*.xml
+          retention-days: 30
+      
+      - name: Publish backend test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Backend Test Results
+          path: back/target/surefire-reports/*.xml
+          reporter: java-junit
+          fail-on-error: false
+      
+      - name: Generate test and coverage summary
         if: always()
         run: |
           echo "### Backend Test Results :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
           if compgen -G "target/surefire-reports/*.xml" > /dev/null; then
             echo "✅ Tests executed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Test Reports:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Surefire reports: \`back/target/surefire-reports/*.xml\`" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ No test results found" >> $GITHUB_STEP_SUMMARY
           fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "target/site/jacoco/index.html" ]; then
+            echo "**Coverage Reports (JaCoCo):**" >> $GITHUB_STEP_SUMMARY
+            echo "- HTML Report: \`back/target/site/jacoco/index.html\`" >> $GITHUB_STEP_SUMMARY
+            echo "- XML Report: \`back/target/site/jacoco/jacoco.xml\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Extract coverage summary from jacoco.csv if available
+            if [ -f "target/site/jacoco/jacoco.csv" ]; then
+              echo "**Coverage Summary:**" >> $GITHUB_STEP_SUMMARY
+              echo "Check the JaCoCo HTML report artifact for detailed coverage metrics" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ No coverage report found" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Build Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
@@ -57,6 +103,7 @@ jobs:
     
     permissions:
       contents: read
+      checks: write
     
     defaults:
       run:
@@ -79,20 +126,75 @@ jobs:
       - name: Build application
         run: npm run build -- --configuration=production
       
-      - name: Run tests
-        run: npm run test -- --watch=false --browsers=ChromeHeadless
+      - name: Run tests with coverage
+        run: npm run test -- --watch=false --browsers=ChromeHeadless --code-coverage
       
-      - name: Generate build report
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-reports
+          path: front/coverage/
+          retention-days: 30
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-results
+          path: front/test-results/*.xml
+          retention-days: 30
+      
+      - name: Publish frontend test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Frontend Test Results
+          path: front/test-results/*.xml
+          reporter: java-junit
+          fail-on-error: false
+      
+      - name: Generate test and coverage summary
         if: always()
         run: |
           echo "### Frontend Build Results :art:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
           if [ -d dist ]; then
             echo "✅ Build completed successfully" >> $GITHUB_STEP_SUMMARY
             echo "📦 Output directory: \`dist/bobapp\`" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Build failed" >> $GITHUB_STEP_SUMMARY
           fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if compgen -G "test-results/*.xml" > /dev/null; then
+            echo "✅ Tests executed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Test Reports:**" >> $GITHUB_STEP_SUMMARY
+            echo "- JUnit reports: \`front/test-results/*.xml\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No test results found" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "coverage/bobapp" ]; then
+            echo "**Coverage Reports (Karma):**" >> $GITHUB_STEP_SUMMARY
+            echo "- HTML Report: \`front/coverage/bobapp/index.html\`" >> $GITHUB_STEP_SUMMARY
+            echo "- LCOV Report: \`front/coverage/bobapp/lcov.info\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Try to extract coverage from lcov.info if available
+            if [ -f "coverage/bobapp/lcov.info" ]; then
+              echo "**Coverage Summary:**" >> $GITHUB_STEP_SUMMARY
+              echo "Check the coverage HTML report artifact for detailed metrics" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ No coverage report found" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Build Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
@@ -116,8 +218,19 @@ jobs:
           echo "| Frontend  | ${{ needs.frontend.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
+          echo "### 📦 Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Backend:**" >> $GITHUB_STEP_SUMMARY
+          echo "- JaCoCo coverage reports (HTML + XML)" >> $GITHUB_STEP_SUMMARY
+          echo "- Surefire test results (JUnit XML)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Frontend:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Karma coverage reports (HTML + LCOV)" >> $GITHUB_STEP_SUMMARY
+          echo "- Test results (JUnit XML)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
           if [ "${{ needs.backend.result }}" == "success" ] && [ "${{ needs.frontend.result }}" == "success" ]; then
             echo "✅ **All checks passed!**" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **Some checks failed. Please review the logs above.**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Some checks failed. Please review the logs and test reports above.**" >> $GITHUB_STEP_SUMMARY
           fi
