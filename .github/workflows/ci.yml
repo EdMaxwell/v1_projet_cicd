@@ -37,7 +37,7 @@ jobs:
         run: |
           echo "### Backend Test Results :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f target/surefire-reports/*.xml ]; then
+          if compgen -G "target/surefire-reports/*.xml" > /dev/null; then
             echo "✅ Tests executed successfully" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ No test results found" >> $GITHUB_STEP_SUMMARY

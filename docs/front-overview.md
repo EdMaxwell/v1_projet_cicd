@@ -103,8 +103,10 @@ ng serve --port 4300
 # Ouvrir automatiquement le navigateur
 ng serve --open
 
-# Mode production local
+# Simuler les paramètres de production (dans le dev server)
 ng serve --configuration=production
+# Note: Ceci n'applique pas toutes les optimisations de production
+# Pour un vrai build de production, utilisez 'ng build --configuration=production'
 ```
 
 ### Accéder à l'application
@@ -258,6 +260,11 @@ npx prettier --write "src/**/*.{ts,html,css,scss}"
 **Mitigation :**
 - Utiliser `--headless=new` si besoin (Chrome moderne)
 - Considérer Puppeteer pour contrôle version Chrome
+
+**Example de test :**
+```bash
+npm run test -- --watch=false --browsers=ChromeHeadless
+```
 
 #### 2. Configuration proxy (proxy.config.json)
 
