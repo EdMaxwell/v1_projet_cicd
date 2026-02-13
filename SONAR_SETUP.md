@@ -22,7 +22,18 @@ Before running the CI pipeline with SonarCloud integration, you need to:
 4. Choose "With GitHub Actions" as the analysis method
 5. SonarCloud will generate a `SONAR_TOKEN` for you
 
-### 3. Add GitHub Secret
+### 3. Disable Automatic Analysis
+
+**Important**: You must disable Automatic Analysis to avoid conflicts with CI analysis.
+
+1. Go to your project in SonarCloud
+2. Navigate to **Administration → Analysis Method**
+3. Turn **OFF** the "Automatic Analysis" toggle
+4. Save the changes
+
+This is required because running both CI analysis and Automatic Analysis simultaneously will cause the analysis to fail.
+
+### 4. Add GitHub Secret
 
 1. Go to your GitHub repository settings
 2. Navigate to **Settings → Secrets and variables → Actions**

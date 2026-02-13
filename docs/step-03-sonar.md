@@ -47,7 +47,7 @@ Intégrer **SonarCloud** dans la pipeline CI/CD pour analyser automatiquement la
 #### Sur le workflow GitHub Actions :
 - Ajout d'un job `sonar` qui s'exécute après `backend` et `frontend`
 - Nécessite un secret `SONAR_TOKEN` dans GitHub
-- Utilise l'action officielle `SonarSource/sonarcloud-github-action@master`
+- Utilise l'action officielle `SonarSource/sonarqube-scan-action@v5.0.0`
 - Fetch complet du repo (`fetch-depth: 0`) pour l'analyse de blame
 
 #### Sur la configuration :
@@ -178,7 +178,33 @@ sonar.java.test.binaries=back/target/test-classes
 
 ---
 
-## 4. Secrets GitHub requis
+## 4. Configuration SonarCloud requise
+
+### Désactiver l'Analyse Automatique
+
+⚠️ **Important** : Avant de lancer la CI, vous devez **désactiver l'Analyse Automatique** dans SonarCloud.
+
+**Pourquoi ?**
+- SonarCloud propose deux modes d'analyse :
+  1. **Analyse Automatique** : SonarCloud analyse automatiquement chaque push
+  2. **Analyse CI** : L'analyse est déclenchée par GitHub Actions (notre cas)
+- Ces deux modes **ne peuvent pas** être actifs simultanément
+- Si les deux sont actifs, l'analyse échouera avec l'erreur : `"You are running CI analysis while Automatic Analysis is enabled"`
+
+**Comment désactiver l'Analyse Automatique ?**
+1. Se connecter sur [sonarcloud.io](https://sonarcloud.io)
+2. Sélectionner le projet **BobApp** (`EdMaxwell_v1_projet_cicd`)
+3. Aller dans **Administration → Analysis Method**
+4. Désactiver le toggle **"Automatic Analysis"**
+5. Sauvegarder les modifications
+
+**Vérification** :
+- Dans l'onglet **Administration → Analysis Method**, "Automatic Analysis" doit être **OFF**
+- Un badge "CI-based analysis" doit être affiché
+
+---
+
+## 5. Secrets GitHub requis
 
 ### A) `SONAR_TOKEN`
 
@@ -221,7 +247,7 @@ sonar.java.test.binaries=back/target/test-classes
 
 ---
 
-## 5. CI : Job Sonar
+## 6. CI : Job Sonar
 
 ### A) Ordre d'exécution
 
@@ -306,10 +332,15 @@ if: ${{ !cancelled() }}
 
 ```yaml
 - name: SonarCloud Scan
-  uses: SonarSource/sonarcloud-github-action@master
+  uses: SonarSource/sonarqube-scan-action@v5.0.0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  with:
+    args: >
+      -Dsonar.projectKey=EdMaxwell_v1_projet_cicd
+      -Dsonar.organization=edmaxwell
+      -Dsonar.host.url=https://sonarcloud.io
 ```
 
 **Action officielle SonarCloud** :
@@ -319,13 +350,14 @@ if: ${{ !cancelled() }}
 - Les propriétés peuvent être overridées via `with.args` si nécessaire
 
 **Note importante sur l'action** :
-- L'ancienne action `sonarcloud-github-action` est toujours maintenue et recommandée
-- Elle est régulièrement mise à jour par SonarSource
-- Pour la dernière version, on peut utiliser `@master` ou une version tagguée (ex: `@v2.1.1`)
+- L'action `sonarqube-scan-action` est la nouvelle action officielle recommandée
+- Elle remplace l'ancienne `sonarcloud-github-action` qui est dépréciée
+- Version utilisée : `v5.0.0` (pinned pour stabilité)
+- Fonctionne pour SonarCloud et SonarQube Server
 
 ```yaml
 - name: SonarCloud Quality Gate check
-  uses: SonarSource/sonarqube-quality-gate-action@master
+  uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
   timeout-minutes: 5
   env:
     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -342,7 +374,7 @@ if: ${{ !cancelled() }}
 
 ---
 
-## 6. Quality Gate / KPI Proposés
+## 7. Quality Gate / KPI Proposés
 
 ### A) Approche : Progressive Hardening
 
@@ -415,7 +447,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 
 ---
 
-## 7. Vérifications
+## 8. Vérifications
 
 ### A) Confirmer que front et back sont bien analysés
 
@@ -493,9 +525,32 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 
 ---
 
-## 8. Limites connues / Pièges
+## 9. Limites connues / Pièges
 
-### A) Chemins relatifs (problème le plus fréquent)
+### A) Analyse Automatique activée (erreur de configuration)
+
+**Problème** :
+- L'analyse CI échoue avec l'erreur : `"You are running CI analysis while Automatic Analysis is enabled"`
+- Cela se produit si l'Analyse Automatique est activée dans SonarCloud en même temps que l'analyse CI
+
+**Symptômes** :
+- Le job Sonar échoue avec exit code 3
+- Message d'erreur dans les logs : `"ERROR You are running CI analysis while Automatic Analysis is enabled. Please consider disabling one or the other."`
+- L'analyse Sonar ne se termine pas
+
+**Solution** :
+1. Se connecter sur [sonarcloud.io](https://sonarcloud.io)
+2. Sélectionner le projet
+3. Aller dans **Administration → Analysis Method**
+4. **Désactiver** le toggle "Automatic Analysis"
+5. Sauvegarder et relancer le workflow GitHub Actions
+
+**Prévention** :
+- Lors de la création du projet sur SonarCloud, choisir **"With GitHub Actions"** comme méthode d'analyse
+- Cela désactive automatiquement l'Analyse Automatique
+- Vérifier régulièrement que l'Analyse Automatique reste désactivée
+
+### B) Chemins relatifs (problème le plus fréquent)
 
 **Problème** :
 - Les chemins dans `sonar-project.properties` sont relatifs à la **racine du repo**
@@ -520,7 +575,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 
 3. Télécharger les artefacts GitHub manuellement et vérifier la structure
 
-### B) PR depuis forks (tokens non accessibles)
+### C) PR depuis forks (tokens non accessibles)
 
 **Problème** :
 - Les secrets GitHub (`SONAR_TOKEN`) ne sont **pas** disponibles pour les PR depuis des forks externes
@@ -546,7 +601,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 - Si le repo est **privé** : pas de risque, les forks ne peuvent pas soumettre de PR sans être invités
 - Si le repo est **public** : utiliser la solution 2 (skip Sonar pour les forks externes)
 
-### C) Couverture non résolue si chemins incorrects
+### D) Couverture non résolue si chemins incorrects
 
 **Problème** :
 - Sonar ne remonte pas d'erreur si les chemins de couverture sont incorrects
@@ -574,7 +629,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 
 **Solution** : Ajuster `sonar.java.binaries` et `sonar.sources` pour correspondre
 
-### D) Timeout Quality Gate
+### E) Timeout Quality Gate
 
 **Problème** :
 - Le Quality Gate peut timeout si SonarCloud met trop de temps à traiter l'analyse
@@ -585,7 +640,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 - Utiliser `continue-on-error: true` pour ne pas bloquer le workflow
 - Vérifier manuellement le Quality Gate dans le dashboard SonarCloud
 
-### E) Règles trop strictes au début
+### F) Règles trop strictes au début
 
 **Problème** :
 - Le Quality Gate "Sonar way" par défaut demande 80% de couverture sur new code
@@ -595,7 +650,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 - Créer un Quality Gate custom avec des seuils plus souples (voir section 6)
 - Augmenter progressivement les exigences
 
-### F) Duplications entre back et front non détectées
+### G) Duplications entre back et front non détectées
 
 **Problème** :
 - Si du code est dupliqué entre backend (Java) et frontend (TypeScript)
@@ -605,7 +660,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 - Revue de code manuelle pour détecter ces cas
 - Refactoring pour mutualiser la logique métier (ex : APIs partagées)
 
-### G) Analyse lente sur gros repos
+### H) Analyse lente sur gros repos
 
 **Problème** :
 - Sur des repos avec beaucoup de code (>100k lignes), l'analyse peut prendre 5-10 min
@@ -617,7 +672,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 
 ---
 
-## 9. Prochaines étapes (Étape 4+)
+## 10. Prochaines étapes (Étape 4+)
 
 ### Étape 4 : Docker Build & Push
 - **Objectif** : Créer des images Docker pour backend et frontend
