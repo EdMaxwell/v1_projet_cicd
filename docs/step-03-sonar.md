@@ -165,16 +165,21 @@ sonar.junit.reportPaths=back/target/surefire-reports
 #### F) Configuration Java
 
 ```properties
+```properties
 sonar.java.source=11
-sonar.java.binaries=back/target/classes
-sonar.java.test.binaries=back/target/test-classes
+# Java binaries are commented out (optional for CI)
+# sonar.java.binaries=back/target/classes
+# sonar.java.test.binaries=back/target/test-classes
 ```
 
 - **`sonar.java.source`** : Version Java du projet (11)
-- **`sonar.java.binaries`** : Chemin des `.class` compilés (nécessaire pour certaines règles)
-- **`sonar.java.test.binaries`** : Chemin des `.class` de tests
+- **`sonar.java.binaries`** : Chemin des `.class` compilés (commenté car optionnel en CI)
+  - Les binaires Java ne sont **pas requis** pour l'analyse de couverture et la plupart des règles
+  - Certaines règles avancées nécessitent les binaires, mais elles sont minoritaires
+  - En CI, on privilégie la simplicité : seuls les rapports de couverture sont téléchargés
+  - Si nécessaire, on peut uploader les binaries comme artefacts supplémentaires
 
-⚠️ **Note** : Pour l'analyse Sonar, on n'a pas besoin de recompiler le code. On télécharge juste les artefacts de couverture.
+⚠️ **Note** : Pour l'analyse Sonar en CI, on télécharge uniquement les artefacts de couverture. Les binaires Java compilés ne sont pas nécessaires pour l'analyse de base (source code + coverage).
 
 ---
 
@@ -640,7 +645,45 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 - Utiliser `continue-on-error: true` pour ne pas bloquer le workflow
 - Vérifier manuellement le Quality Gate dans le dashboard SonarCloud
 
-### F) Règles trop strictes au début
+### F) Erreur "No files nor directories matching 'back/target/classes'"
+
+**Problème** :
+- L'analyse échoue avec : `Invalid value for 'sonar.java.binaries' property. No files nor directories matching 'back/target/classes'`
+- Cela se produit si `sonar.java.binaries` est configuré mais les binaires compilés ne sont pas disponibles
+
+**Symptômes** :
+- Le job Sonar échoue avec exit code 3
+- Message d'erreur dans les logs : `Error during SonarScanner Engine execution`
+- L'analyse s'arrête au niveau du JavaSensor
+
+**Solution** :
+1. **Recommandé pour CI** : Commenter ou supprimer `sonar.java.binaries` dans `sonar-project.properties`
+   ```properties
+   # sonar.java.binaries=back/target/classes
+   # sonar.java.test.binaries=back/target/test-classes
+   ```
+   - Les binaires Java ne sont **pas requis** pour l'analyse de couverture
+   - La plupart des règles Sonar fonctionnent avec le code source uniquement
+   - Simplifie le workflow CI (pas besoin d'uploader les binaires)
+
+2. **Alternative** : Uploader les binaires comme artefacts
+   - Dans le job `backend`, ajouter :
+     ```yaml
+     - name: Upload compiled classes
+       uses: actions/upload-artifact@v4
+       with:
+         name: backend-classes
+         path: back/target/classes/
+     ```
+   - Dans le job `sonar`, télécharger l'artefact avant l'analyse
+   - Plus complexe et augmente le temps de CI
+
+**Impact** :
+- ✅ L'analyse de couverture fonctionne normalement
+- ✅ La plupart des règles Sonar fonctionnent (analyse du code source)
+- ⚠️ Quelques règles avancées nécessitant le bytecode sont désactivées (minoritaires)
+
+### G) Règles trop strictes au début
 
 **Problème** :
 - Le Quality Gate "Sonar way" par défaut demande 80% de couverture sur new code
@@ -650,7 +693,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 - Créer un Quality Gate custom avec des seuils plus souples (voir section 6)
 - Augmenter progressivement les exigences
 
-### G) Duplications entre back et front non détectées
+### H) Duplications entre back et front non détectées
 
 **Problème** :
 - Si du code est dupliqué entre backend (Java) et frontend (TypeScript)
@@ -660,7 +703,7 @@ Ces conditions s'appliquent à **l'ensemble du code** (legacy inclus) :
 - Revue de code manuelle pour détecter ces cas
 - Refactoring pour mutualiser la logique métier (ex : APIs partagées)
 
-### H) Analyse lente sur gros repos
+### I) Analyse lente sur gros repos
 
 **Problème** :
 - Sur des repos avec beaucoup de code (>100k lignes), l'analyse peut prendre 5-10 min
